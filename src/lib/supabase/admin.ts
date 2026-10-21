@@ -16,6 +16,9 @@ function clienteServicio() {
   return createClient(env.supabaseUrl, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+/** Indica si el servidor tiene la clave necesaria para guardar PDFs. */
+export const almacenamientoConfigurado = () => Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+
 export async function subirPdf(path: string, contenido: Uint8Array) {
   const { error } = await clienteServicio()
     .storage.from(BUCKET_PDF)

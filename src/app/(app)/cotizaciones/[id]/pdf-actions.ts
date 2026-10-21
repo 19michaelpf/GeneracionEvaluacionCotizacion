@@ -8,7 +8,7 @@ import { mensajeErrorBD } from '@/lib/errores';
 import { accionesDisponibles } from '@/lib/estados';
 import { cargarDatosPdf } from '@/lib/pdf/datos';
 import { generarPdf } from '@/lib/pdf/generar';
-import { eliminarPdf, subirPdf } from '@/lib/supabase/admin';
+import { almacenamientoConfigurado, eliminarPdf, subirPdf } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { ResultadoAccion } from '@/lib/types';
 
@@ -43,12 +43,27 @@ export async function generarPdfCotizacion(cotizacionId: string): Promise<Result
   }
   const { cot, datos } = cargado;
 
+  if (!almacenamientoConfigurado()) {
+    return {
+      error:
+        'Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor (en Vercel: Settings → Environment Variables) y volver a desplegar.',
+    };
+  }
+
+  let contenido: Uint8Array;
+  try {
+    contenido = await generarPdf(datos);
+  } catch (e) {
+    console.error('Error al componer el PDF', e);
+    return { error: `No se pudo componer el documento PDF (${detalleTecnico(e)}).` };
+  }
+
   const path = `${cot.id}/v${datos.version}.pdf`;
   try {
-    await subirPdf(path, await generarPdf(datos));
+    await subirPdf(path, contenido);
   } catch (e) {
-    console.error('Error al generar o subir el PDF', e);
-    return { error: 'No se pudo generar el PDF. Intente nuevamente.' };
+    console.error('Error al guardar el PDF', e);
+    return { error: `${detalleTecnico(e)}.` };
   }
 
   const { error } = await supabase.rpc('registrar_pdf', { p_cotizacion_id: cot.id, p_version: datos.version });
@@ -60,6 +75,12 @@ export async function generarPdfCotizacion(cotizacionId: string): Promise<Result
   revalidatePath(`/cotizaciones/${cot.id}`);
   revalidatePath('/cotizaciones');
   return { ok: true, aviso };
+}
+
+/** Mensaje corto del error para mostrar al usuario interno (sin trazas ni claves). */
+function detalleTecnico(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.replace(/\s+/g, ' ').slice(0, 200);
 }
 
 export async function validarCotizacion(cotizacionId: string): Promise<ResultadoAccion> {
